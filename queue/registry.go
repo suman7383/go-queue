@@ -14,7 +14,7 @@ type TopicRegistry struct {
 }
 
 // Creates a new empty registry
-func NewTopicRegistry(config TopicConfig) *TopicRegistry {
+func  NewTopicRegistry(config TopicConfig) *TopicRegistry {
 	return &TopicRegistry{
 		topics: make(map[string]*Topic),
 		config: config,

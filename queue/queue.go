@@ -1,7 +1,8 @@
 package queue
 
 import (
-	"encoding/json"
+	"bufio"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"sync"
@@ -26,7 +27,7 @@ type Message struct {
 type Topic struct {
 	Name     string
 	messages []Message
-	inFlight map[int]*Message // delivered but not yet acked
+	inFlight map[int]Message // delivered but not yet acked
 	nextID   int
 	mu       sync.Mutex
 	config   TopicConfig
@@ -42,8 +43,8 @@ func NewTopic(name string, config TopicConfig) *Topic {
 
 	t := &Topic{
 		Name:     name,
-		messages: []Message{},
-		inFlight: make(map[int]*Message),
+		messages: make([]Message, 0, 10000),
+		inFlight: make(map[int]Message),
 		config:   config,
 		wal:      wal,
 	}
@@ -64,7 +65,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 						// max retry not reached
 						msg.Retries++
 						fmt.Printf("[Retry] Topic: %s | Msg ID %d | Retry #%d\n", t.Name, msg.ID, msg.Retries)
-						t.messages = append(t.messages, *msg) // Requeue
+						t.messages = append(t.messages, msg) // Requeue
 
 					} else {
 						// max retry reached -> discard the message
@@ -82,7 +83,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 }
 
 // Enqueue adds a message to the topic
-func (t *Topic) Enqueue(payload string) int {
+func (t *Topic) Enqueue(payload string) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -91,38 +92,35 @@ func (t *Topic) Enqueue(payload string) int {
 		Payload: payload,
 	}
 
+	// Append to WAL
+	t.wal.AppendEvent("enqueue", msg)
+
 	t.nextID++
 	t.messages = append(t.messages, msg)
 
-	// Append to WAL
-	if err := t.wal.AppendEvent("enqueue", msg); err != nil {
-		fmt.Println("[WAL] Write failed:", err)
-	}
-
-	return msg.ID
+	return msg.ID, nil
 }
 
 // Dequeue returns the next message if exists(pull)
-func (t *Topic) Dequeue() (*Message, bool) {
+func (t *Topic) Dequeue() (Message, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if len(t.messages) == 0 {
-		return nil, false
+		return Message{}, false
 	}
 
 	msg := t.messages[0]
+
+	t.wal.AppendEvent("deliver", msg)
+
 	t.messages = t.messages[1:]
 
 	msg.Timestamp = time.Now()
 	msg.Acked = false
-	t.inFlight[msg.ID] = &msg
+	t.inFlight[msg.ID] = msg
 
-	if err := t.wal.AppendEvent("deliver", msg); err != nil {
-		fmt.Println("[WAL] Deliver log failed:", err)
-	}
-
-	return &msg, true
+	return msg, true
 }
 
 func (t *Topic) Acknowledge(id int) bool {
@@ -134,13 +132,11 @@ func (t *Topic) Acknowledge(id int) bool {
 		return false
 	}
 
+	// Append to WAL
+	t.wal.AppendEvent("ack", msg)
+
 	msg.Acked = true
 	delete(t.inFlight, id)
-
-	// Append to WAL
-	if err := t.wal.AppendEvent("ack", *msg); err != nil {
-		fmt.Println("[WAL] Write failed:", err)
-	}
 
 	return true
 }
@@ -154,7 +150,7 @@ func (t *Topic) replayWAL() {
 	}
 	defer file.Close()
 
-	decoder := json.NewDecoder(file)
+	reader := bufio.NewReader(file)
 
 	type msgState struct {
 		message   Message
@@ -166,22 +162,71 @@ func (t *Topic) replayWAL() {
 	msgMap := make(map[int]*msgState)
 
 	for {
-		var entry LogEntry
-		if err := decoder.Decode(&entry); err != nil {
+		// --- Decode Type (uint16 length + string) ---
+		var typeLen uint16
+		if err := binary.Read(reader, binary.LittleEndian, &typeLen); err != nil {
+			break // reached EOF
+		}
+
+		typeBytes := make([]byte, typeLen)
+		if _, err := reader.Read(typeBytes); err != nil {
+			break
+		}
+		entryType := string(typeBytes)
+
+		// --- Decode Message ID ---
+		var id int64
+		if err := binary.Read(reader, binary.LittleEndian, &id); err != nil {
 			break
 		}
 
-		id := entry.Message.ID
-		state, exists := msgMap[id]
-
-		if !exists {
-			state = &msgState{}
-			msgMap[id] = state
+		// --- Decode Payload (uint32 length + string) ---
+		var payloadLen uint32
+		if err := binary.Read(reader, binary.LittleEndian, &payloadLen); err != nil {
+			break
 		}
 
-		state.message = entry.Message
+		payloadBytes := make([]byte, payloadLen)
+		if _, err := reader.Read(payloadBytes); err != nil {
+			break
+		}
 
-		switch entry.Type {
+		// --- Decode Timestamp ---
+		var ts int64
+		if err := binary.Read(reader, binary.LittleEndian, &ts); err != nil {
+			break
+		}
+
+		// --- Decode Acked ---
+		var acked uint8
+		if err := binary.Read(reader, binary.LittleEndian, &acked); err != nil {
+			break
+		}
+
+		// --- Decode Retries ---
+		var retries int32
+		if err := binary.Read(reader, binary.LittleEndian, &retries); err != nil {
+			break
+		}
+
+		// Build message
+		msg := Message{
+			ID:        int(id),
+			Payload:   string(payloadBytes),
+			Timestamp: time.Unix(0, ts),
+			Acked:     acked == 1,
+			Retries:   int(retries),
+		}
+
+		// Track state
+		state, exists := msgMap[msg.ID]
+		if !exists {
+			state = &msgState{}
+			msgMap[msg.ID] = state
+		}
+		state.message = msg
+
+		switch entryType {
 		case "enqueue":
 			state.enqueued = true
 		case "deliver":
@@ -190,22 +235,22 @@ func (t *Topic) replayWAL() {
 			state.acked = true
 		}
 
-		if id >= t.nextID {
-			t.nextID = id + 1
+		// Ensure nextID is larger than any ID seen
+		if msg.ID >= t.nextID {
+			t.nextID = msg.ID + 1
 		}
-
 	}
 
+	// Rebuild topic state
 	for id, state := range msgMap {
 		if state.acked {
 			continue // skip fully ACKed messages
 		}
 
 		if state.delivered {
-			t.inFlight[id] = &state.message
+			t.inFlight[id] = state.message
 		} else if state.enqueued {
 			t.messages = append(t.messages, state.message)
 		}
 	}
-
 }
