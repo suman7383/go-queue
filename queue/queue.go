@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+type Queue[T any] interface {
+	Enqueue(T) int
+	Dequeue() (T, error)
+	Size() int
+	Cap() int
+}
+
 type TopicConfig struct {
 	AckTimeout time.Duration
 	MaxRetries int
@@ -26,7 +33,7 @@ type Message struct {
 // Topic represents a named message queue
 type Topic struct {
 	Name     string
-	messages []Message
+	messages Queue[Message]
 	inFlight map[int]Message // delivered but not yet acked
 	nextID   int
 	mu       sync.Mutex
@@ -43,7 +50,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 
 	t := &Topic{
 		Name:     name,
-		messages: make([]Message, 0, 10000),
+		messages: NewRingBuffer[Message](10000),
 		inFlight: make(map[int]Message),
 		config:   config,
 		wal:      wal,
@@ -65,7 +72,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 						// max retry not reached
 						msg.Retries++
 						fmt.Printf("[Retry] Topic: %s | Msg ID %d | Retry #%d\n", t.Name, msg.ID, msg.Retries)
-						t.messages = append(t.messages, msg) // Requeue
+						t.messages.Enqueue(msg) // Requeue
 
 					} else {
 						// max retry reached -> discard the message
@@ -84,9 +91,8 @@ func NewTopic(name string, config TopicConfig) *Topic {
 
 // Enqueue adds a message to the topic
 func (t *Topic) Enqueue(payload string) (int, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
 
+	t.mu.Lock()
 	msg := Message{
 		ID:      t.nextID,
 		Payload: payload,
@@ -94,33 +100,38 @@ func (t *Topic) Enqueue(payload string) (int, error) {
 
 	// Append to WAL
 	t.wal.AppendEvent("enqueue", msg)
-
 	t.nextID++
-	t.messages = append(t.messages, msg)
+	t.mu.Unlock()
+	t.messages.Enqueue(msg)
+	// t.messages.enqueue(msg)
 
 	return msg.ID, nil
 }
 
 // Dequeue returns the next message if exists(pull)
-func (t *Topic) Dequeue() (Message, bool) {
+func (t *Topic) Dequeue() (Message, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if len(t.messages) == 0 {
-		return Message{}, false
-	}
+	// if len(t.messages) == 0 {
+	// 	return Message{}, false
+	// }
 
-	msg := t.messages[0]
+	msg, err := t.messages.Dequeue()
+
+	if err != nil {
+		return msg, err
+	}
 
 	t.wal.AppendEvent("deliver", msg)
 
-	t.messages = t.messages[1:]
+	// t.messages = t.messages[1:]
 
 	msg.Timestamp = time.Now()
 	msg.Acked = false
 	t.inFlight[msg.ID] = msg
 
-	return msg, true
+	return msg, nil
 }
 
 func (t *Topic) Acknowledge(id int) bool {
@@ -250,7 +261,7 @@ func (t *Topic) replayWAL() {
 		if state.delivered {
 			t.inFlight[id] = state.message
 		} else if state.enqueued {
-			t.messages = append(t.messages, state.message)
+			t.messages.Enqueue(state.message)
 		}
 	}
 }

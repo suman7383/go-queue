@@ -1,36 +1,33 @@
 package queue
 
 import (
+	"fmt"
 	"testing"
+	"time"
 )
 
-// func BenchmarkQueueQps(b *testing.B) {
-// 	topic := NewTopic("test", TopicConfig{
-// 		AckTimeout: 30 * time.Second,
-// 		MaxRetries: 3,
-// 	})
+func BenchmarkQueueQps(b *testing.B) {
+	topic := NewTopic("test", TopicConfig{
+		AckTimeout: 30 * time.Second,
+		MaxRetries: 3,
+	})
 
-// 	maxOps := 1_000_000 // cap at 1M ops
-// 	if b.N > maxOps {
-// 		b.N = maxOps
-// 	}
+	b.ResetTimer()
 
-// 	b.ResetTimer()
+	go func() {
+		for i := 0; i < b.N; i++ {
+			topic.Enqueue(fmt.Sprintf("message %d", i))
+		}
+	}()
 
-// 	go func() {
-// 		for i := 0; i < b.N; i++ {
-// 			topic.Enqueue(fmt.Sprintf("message %d", i))
-// 		}
-// 	}()
+	for i := 0; i < b.N; i++ {
+		msg, err := topic.Dequeue()
+		if err == nil {
 
-// 	for i := 0; i < b.N; i++ {
-// 		msg, _ := topic.Dequeue()
-// 		if msg != nil {
-
-// 			topic.Acknowledge(msg.ID)
-// 		}
-// 	}
-// }
+			topic.Acknowledge(msg.ID)
+		}
+	}
+}
 
 func BenchmarkQueueProdCons(b *testing.B) {
 	q := NewTopic("bench", TopicConfig{})
@@ -44,8 +41,8 @@ func BenchmarkQueueProdCons(b *testing.B) {
 			case <-done:
 				return
 			default:
-				msg, ok := q.Dequeue()
-				if ok {
+				msg, err := q.Dequeue()
+				if err == nil {
 					q.Acknowledge(msg.ID)
 				}
 			}

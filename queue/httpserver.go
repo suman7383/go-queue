@@ -61,9 +61,9 @@ func (s *HTTPServer) handleConsume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, ok := topic.Dequeue()
-	if !ok {
-		http.Error(w, "No messages", http.StatusNoContent)
+	msg, err := topic.Dequeue()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNoContent)
 		return
 	}
 
