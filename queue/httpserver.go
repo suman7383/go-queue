@@ -3,6 +3,7 @@ package queue
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ func (s *HTTPServer) Start(addr string) {
 	http.HandleFunc("/consume/", s.handleConsume)
 	http.HandleFunc("/ack/", s.handleAck)
 
-	fmt.Println("[HTTP] Server running at", addr)
+	log.Println("[HTTP] Server running at", addr)
 	http.ListenAndServe(addr, nil)
 }
 
@@ -42,7 +43,7 @@ func (s *HTTPServer) handleProduce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// fmt.Print(payload)
+	// log.Print(payload)
 
 	topic = s.Registry.GetTopic(topicName)
 	_, err := topic.Enqueue(payload.Message)
@@ -50,7 +51,7 @@ func (s *HTTPServer) handleProduce(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to enqueue message", http.StatusInternalServerError)
 		return
 	}
-	// fmt.Fprintf(w, "Message enqueued with ID %d\n", id)
+	// log.Fprintf(w, "Message enqueued with ID %d\n", id)
 }
 
 func (s *HTTPServer) handleConsume(w http.ResponseWriter, r *http.Request) {

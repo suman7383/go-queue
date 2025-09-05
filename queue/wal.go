@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -68,7 +69,7 @@ func (w *WAL) runWriter() {
 		for _, e := range batch {
 			if err := w.encodeEntry(e); err != nil {
 				// In production: push to errChan or panic based on durability needs
-				fmt.Printf("[WAL ERROR] encode failed: %v\n", err)
+				log.Printf("[WAL ERROR] encode failed: %v\n", err)
 			}
 		}
 		batch = batch[:0]

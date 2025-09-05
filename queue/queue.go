@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
@@ -71,12 +72,12 @@ func NewTopic(name string, config TopicConfig) *Topic {
 					if msg.Retries < t.config.MaxRetries {
 						// max retry not reached
 						msg.Retries++
-						fmt.Printf("[Retry] Topic: %s | Msg ID %d | Retry #%d\n", t.Name, msg.ID, msg.Retries)
+						log.Printf("[Retry] Topic: %s | Msg ID %d | Retry #%d\n", t.Name, msg.ID, msg.Retries)
 						t.messages.Enqueue(msg) // Requeue
 
 					} else {
 						// max retry reached -> discard the message
-						fmt.Printf("[DROP]: Msg ID %d exceeded max retries (%d). Discarded.\n", msg.ID, t.config.MaxRetries)
+						log.Printf("[DROP]: Msg ID %d exceeded max retries (%d). Discarded.\n", msg.ID, t.config.MaxRetries)
 						// TODO: move to DLQ here later
 					}
 					delete(t.inFlight, id)
@@ -93,6 +94,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 func (t *Topic) Enqueue(payload string) (int, error) {
 
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	msg := Message{
 		ID:      t.nextID,
 		Payload: payload,
@@ -100,8 +102,8 @@ func (t *Topic) Enqueue(payload string) (int, error) {
 
 	// Append to WAL
 	t.wal.AppendEvent("enqueue", msg)
+
 	t.nextID++
-	t.mu.Unlock()
 	t.messages.Enqueue(msg)
 	// t.messages.enqueue(msg)
 
@@ -142,11 +144,11 @@ func (t *Topic) Acknowledge(id int) bool {
 	if !ok {
 		return false
 	}
+	msg.Acked = true
 
 	// Append to WAL
 	t.wal.AppendEvent("ack", msg)
 
-	msg.Acked = true
 	delete(t.inFlight, id)
 
 	return true
@@ -156,7 +158,7 @@ func (t *Topic) replayWAL() {
 	path := fmt.Sprintf("data/%s.wal", t.Name)
 	file, err := os.Open(path)
 	if err != nil {
-		fmt.Println("No WAL found for topic:", t.Name)
+		log.Println("No WAL found for topic:", t.Name)
 		return
 	}
 	defer file.Close()
