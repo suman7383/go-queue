@@ -3,6 +3,7 @@ package queue
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ func (s *HTTPServer) Start(addr string) {
 	http.HandleFunc("/consume/", s.handleConsume)
 	http.HandleFunc("/ack/", s.handleAck)
 
-	fmt.Println("[HTTP] Server running at", addr)
+	log.Println("[HTTP] Server running at", addr)
 	http.ListenAndServe(addr, nil)
 }
 
@@ -42,11 +43,15 @@ func (s *HTTPServer) handleProduce(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Print(payload)
+	// log.Print(payload)
 
 	topic = s.Registry.GetTopic(topicName)
-	id := topic.Enqueue(payload.Message)
-	fmt.Fprintf(w, "Message enqueued with ID %d\n", id)
+	_, err := topic.Enqueue(payload.Message)
+	if err != nil {
+		http.Error(w, "Failed to enqueue message", http.StatusInternalServerError)
+		return
+	}
+	// log.Fprintf(w, "Message enqueued with ID %d\n", id)
 }
 
 func (s *HTTPServer) handleConsume(w http.ResponseWriter, r *http.Request) {
@@ -57,15 +62,16 @@ func (s *HTTPServer) handleConsume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, ok := topic.Dequeue()
-	if !ok {
-		http.Error(w, "No messages", http.StatusNoContent)
+	msg, err := topic.Dequeue()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNoContent)
 		return
 	}
 
 	json.NewEncoder(w).Encode(msg)
 }
 
+// Route -> /ack/[TOPIC-NAME]/[TOPIC-ID]
 func (s *HTTPServer) handleAck(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {

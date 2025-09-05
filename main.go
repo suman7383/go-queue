@@ -8,7 +8,7 @@ import (
 
 func main() {
 	config := queue.TopicConfig{
-		AckTimeout: 5 * time.Second,
+		AckTimeout: 30 * time.Second,
 		MaxRetries: 3,
 	}
 
