@@ -47,17 +47,16 @@ func (r *RingBuffer[T]) Enqueue(msg T) int {
 func (r *RingBuffer[T]) Dequeue() (T, error) {
 	var msg T
 	r.mu.Lock()
+	defer r.mu.Unlock()
 
 	if r.size == 0 {
 		return msg, ErrEmptyQueue
 	}
 
 	// take out from head
-	msg = r.queue[r.head]
+	msg = r.queue[(r.head%r.cap)]
 	r.head++
 	r.size--
-
-	r.mu.Unlock()
 
 	return msg, nil
 }
