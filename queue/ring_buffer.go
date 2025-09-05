@@ -55,7 +55,7 @@ func (r *RingBuffer[T]) Dequeue() (T, error) {
 
 	// take out from head
 	msg = r.queue[(r.head%r.cap)]
-	r.head++
+	r.head = (r.head + 1)%r.cap
 	r.size--
 
 	return msg, nil
