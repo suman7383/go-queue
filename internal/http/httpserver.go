@@ -64,9 +64,9 @@ func (s *HTTPServer) handleConsume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg, err := topic.Dequeue()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNoContent)
+	msg, ok := topic.Dequeue()
+	if !ok {
+		http.Error(w, q.ErrEmptyQueue.Error(), http.StatusNoContent)
 		return
 	}
 
@@ -82,7 +82,7 @@ func (s *HTTPServer) handleAck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	topicName := parts[2]
-	id, err := strconv.Atoi(parts[3])
+	id, err := strconv.ParseInt(parts[3], 10, 64)
 
 	if err != nil {
 		http.Error(w, "Invalid message ID", http.StatusBadRequest)

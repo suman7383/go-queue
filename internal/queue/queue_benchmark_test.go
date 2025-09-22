@@ -7,22 +7,21 @@ import (
 )
 
 func BenchmarkQueueQps(b *testing.B) {
-    topic := NewTopic("test", TopicConfig{
-        AckTimeout: 30 * time.Second,
-        MaxRetries: 3,
-    })
+	topic := NewTopic("test", TopicConfig{
+		AckTimeout: 30 * time.Second,
+		MaxRetries: 3,
+	})
 
-    b.ResetTimer()
+	b.ResetTimer()
 
-    for i := 0; i < b.N; i++ {
-        topic.Enqueue(fmt.Sprintf("message %d", i))
+	for i := 0; i < b.N; i++ {
+		topic.Enqueue(fmt.Sprintf("message %d", i))
 
-        msg, err := topic.Dequeue()
-        if err != nil {
-            b.Fatalf("Dequeue failed at iteration %d: %v", i, err)
-        }
+		msg, ok := topic.Dequeue()
+		if !ok {
+			b.Fatalf("queue empty %d", i)
+		}
 
-        topic.Acknowledge(msg.ID)
-    }
+		topic.Acknowledge(msg.ID)
+	}
 }
-

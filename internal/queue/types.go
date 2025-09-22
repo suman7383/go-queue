@@ -3,10 +3,10 @@ package queue
 import "time"
 
 type Queue[T any] interface {
-	Enqueue(T) int
-	Dequeue() (T, error)
-	Size() int
-	Cap() int
+	Enqueue(T) int64
+	Dequeue() (T, bool)
+	Size() int64
+	Cap() int64
 }
 
 type TopicConfig struct {
@@ -16,7 +16,7 @@ type TopicConfig struct {
 
 // Message is a simple struct holding the message and data
 type Message struct {
-	ID        int
+	ID        int64
 	Payload   string
 	Timestamp time.Time // When it was delivered
 	Acked     bool      // Whether it's been acknowledged

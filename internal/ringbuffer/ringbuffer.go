@@ -1,4 +1,4 @@
-package queue
+package ringbuffer
 
 import (
 	"log"
@@ -7,14 +7,14 @@ import (
 
 type RingBuffer[T any] struct {
 	queue []T
-	head  int
-	tail  int
-	size  int
-	cap   int
-	mu    sync.RWMutex
+	head  int64
+	tail  int64
+	size  int64
+	cap   int64
+	mu    sync.Mutex
 }
 
-func NewRingBuffer[T any](capacity int) *RingBuffer[T] {
+func NewRingBuffer[T any](capacity int64) *RingBuffer[T] {
 	return &RingBuffer[T]{
 		queue: make([]T, capacity),
 		head:  0,
@@ -26,7 +26,7 @@ func NewRingBuffer[T any](capacity int) *RingBuffer[T] {
 
 // insert an element at the tail.
 // Returns (size, error)
-func (r *RingBuffer[T]) Enqueue(msg T) int {
+func (r *RingBuffer[T]) Enqueue(msg T) int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -44,30 +44,31 @@ func (r *RingBuffer[T]) Enqueue(msg T) int {
 	return r.size
 }
 
-func (r *RingBuffer[T]) Dequeue() (T, error) {
-	var msg T
+func (r *RingBuffer[T]) Dequeue() (T, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.size == 0 {
-		return msg, ErrEmptyQueue
+	if r.size == 0 || r.head == r.tail {
+		var t T
+		return t, false
 	}
 
 	// take out from head
-	msg = r.queue[(r.head%r.cap)]
-	r.head = (r.head + 1)%r.cap
+	item := r.queue[(r.head % r.cap)]
+
+	var t T
+	r.queue[(r.head % r.cap)] = t
+	r.head = (r.head + 1) % r.cap
 	r.size--
 
-	return msg, nil
+	return item, true
 }
 
-func (r *RingBuffer[T]) Size() int {
-
+func (r *RingBuffer[T]) Size() int64 {
 	return r.size
 }
 
-func (r *RingBuffer[T]) Cap() int {
-
+func (r *RingBuffer[T]) Cap() int64 {
 	return r.cap
 }
 
@@ -81,5 +82,5 @@ func (r *RingBuffer[T]) resize() {
 	r.queue = new_queue
 	r.head = 0
 	r.tail = r.size
-	r.cap = cap(r.queue)
+	r.cap = 2 * r.cap
 }
