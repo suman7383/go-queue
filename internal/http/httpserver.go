@@ -1,4 +1,4 @@
-package queue
+package server
 
 import (
 	"encoding/json"
@@ -7,13 +7,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	q "github.com/suman7383/go-queue/internal/queue"
 )
 
 type HTTPServer struct {
-	Registry *TopicRegistry
+	Registry *q.TopicRegistry
 }
 
-func NewHttpServer(registry *TopicRegistry) *HTTPServer {
+func NewHttpServer(registry *q.TopicRegistry) *HTTPServer {
 	return &HTTPServer{Registry: registry}
 }
 

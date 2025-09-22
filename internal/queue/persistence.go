@@ -19,11 +19,6 @@ type WAL struct {
 	closeCh chan struct{}
 }
 
-type LogEntry struct {
-	Type    string // "enqueue" | "deliver" | "ack"
-	Message Message
-}
-
 func NewWAL(topicName string) (*WAL, error) {
 	path := fmt.Sprintf("data/%s.wal", topicName)
 	os.MkdirAll("data", os.ModePerm)
