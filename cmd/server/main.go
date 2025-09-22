@@ -3,7 +3,8 @@ package main
 import (
 	"time"
 
-	"github.com/suman7383/go-queue/queue"
+	s "github.com/suman7383/go-queue/internal/http"
+	"github.com/suman7383/go-queue/internal/queue"
 )
 
 func main() {
@@ -18,6 +19,6 @@ func main() {
 	// Recover topics from disk BEFORE producers/consumers
 	registry.LoadTopicFromDisk(config)
 
-	server := queue.NewHttpServer(registry)
+	server := s.NewHttpServer(registry)
 	server.Start(":8080")
 }
