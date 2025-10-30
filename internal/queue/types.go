@@ -16,11 +16,11 @@ type TopicConfig struct {
 
 // Message is a simple struct holding the message and data
 type Message struct {
-	ID        int64
-	Payload   string
-	Timestamp time.Time // When it was delivered
-	Acked     bool      // Whether it's been acknowledged
-	Retries   int
+	ID        int64     `json:"id,omitempty"`
+	Payload   string    `json:"payload,omitempty"`
+	Timestamp time.Time `json:"timestamp,omitempty"` // When it was delivered
+	Acked     bool      `json:"acked,omitempty"`     // Whether it's been acknowledged
+	Retries   int       `json:"retries,omitempty"`
 }
 
 type LogEntry struct {

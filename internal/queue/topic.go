@@ -32,6 +32,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 
 	t := &Topic{
 		Name:     name,
+		nextID:   1,
 		messages: ringbuffer.NewRingBuffer[Message](10000),
 		inFlight: make(map[int64]Message),
 		config:   config,
