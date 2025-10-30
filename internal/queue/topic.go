@@ -8,35 +8,16 @@ import (
 	"os"
 	"sync"
 	"time"
+
+	"github.com/suman7383/go-queue/internal/ringbuffer"
 )
-
-type Queue[T any] interface {
-	Enqueue(T) int
-	Dequeue() (T, error)
-	Size() int
-	Cap() int
-}
-
-type TopicConfig struct {
-	AckTimeout time.Duration
-	MaxRetries int
-}
-
-// Message is a simple struct holding the message and data
-type Message struct {
-	ID        int
-	Payload   string
-	Timestamp time.Time // When it was delivered
-	Acked     bool      // Whether it's been acknowledged
-	Retries   int
-}
 
 // Topic represents a named message queue
 type Topic struct {
 	Name     string
 	messages Queue[Message]
-	inFlight map[int]Message // delivered but not yet acked
-	nextID   int
+	inFlight map[int64]Message // delivered but not yet acked
+	nextID   int64
 	mu       sync.Mutex
 	config   TopicConfig
 	wal      *WAL
@@ -51,8 +32,9 @@ func NewTopic(name string, config TopicConfig) *Topic {
 
 	t := &Topic{
 		Name:     name,
-		messages: NewRingBuffer[Message](10000),
-		inFlight: make(map[int]Message),
+		nextID:   1,
+		messages: ringbuffer.NewRingBuffer[Message](10000),
+		inFlight: make(map[int64]Message),
 		config:   config,
 		wal:      wal,
 	}
@@ -91,7 +73,7 @@ func NewTopic(name string, config TopicConfig) *Topic {
 }
 
 // Enqueue adds a message to the topic
-func (t *Topic) Enqueue(payload string) (int, error) {
+func (t *Topic) Enqueue(payload string) (int64, error) {
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -111,7 +93,7 @@ func (t *Topic) Enqueue(payload string) (int, error) {
 }
 
 // Dequeue returns the next message if exists(pull)
-func (t *Topic) Dequeue() (Message, error) {
+func (t *Topic) Dequeue() (Message, bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -119,10 +101,10 @@ func (t *Topic) Dequeue() (Message, error) {
 	// 	return Message{}, false
 	// }
 
-	msg, err := t.messages.Dequeue()
+	msg, ok := t.messages.Dequeue()
 
-	if err != nil {
-		return msg, err
+	if !ok {
+		return msg, ok
 	}
 
 	t.wal.AppendEvent("deliver", msg)
@@ -133,10 +115,10 @@ func (t *Topic) Dequeue() (Message, error) {
 	msg.Acked = false
 	t.inFlight[msg.ID] = msg
 
-	return msg, nil
+	return msg, true
 }
 
-func (t *Topic) Acknowledge(id int) bool {
+func (t *Topic) Acknowledge(id int64) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -172,7 +154,7 @@ func (t *Topic) replayWAL() {
 		acked     bool
 	}
 
-	msgMap := make(map[int]*msgState)
+	msgMap := make(map[int64]*msgState)
 
 	for {
 		// --- Decode Type (uint16 length + string) ---
@@ -224,7 +206,7 @@ func (t *Topic) replayWAL() {
 
 		// Build message
 		msg := Message{
-			ID:        int(id),
+			ID:        int64(id),
 			Payload:   string(payloadBytes),
 			Timestamp: time.Unix(0, ts),
 			Acked:     acked == 1,

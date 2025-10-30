@@ -1,0 +1,53 @@
+data
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Go build cache
+/go-build/
+/cover/
+/dist/
+/bin/
+/build/
+/tmp/
+/vendor/
+
+# IDE/editor specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+
+# Logs and temp files
+*.log
+*.tmp
+*.pid
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Private credentials or environment files
+.env
+.env.*
+*.key
+*.crt
+*.pem
+
+# Docker
+docker-compose.override.yml
+.docker/
+*.tar
+
+# Misc
+*.local
+*.cache

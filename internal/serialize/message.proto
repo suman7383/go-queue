@@ -1,0 +1,14 @@
+syntax = "proto3";
+option go_package = "github.com/suman7383/go-queue/internal/serialize;serializepb";
+
+message Produce {
+    string message = 1;
+}
+
+message Consume {
+    int64 id = 1;
+    string payload = 2;
+    bool acked = 3;
+    string timestamp = 4;
+    int32 retries = 5;
+}
