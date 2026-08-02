@@ -60,6 +60,7 @@ func (w *WAL) runWriter() {
 
 	batch := make([]LogEntry, 0, 1000)
 
+	// Flushes the current batch to disk and resets the batch slice.
 	flush := func() {
 		for _, e := range batch {
 			if err := w.encodeEntry(e); err != nil {
@@ -74,27 +75,26 @@ func (w *WAL) runWriter() {
 	ticker := time.NewTicker(50 * time.Millisecond) // flush interval
 	defer ticker.Stop()
 
+	// Helper function to check batch size and flush if needed
+	checkAndFlush := func(batchSize, minFlushBatchSize int) {
+		if batchSize > minFlushBatchSize { // max batch size
+			flush()
+		}
+	}
+
 	for {
 		select {
 		case e, ok := <-w.walChan:
 			if !ok {
-				if len(batch) > 0 {
-					flush()
-				}
+				checkAndFlush(len(batch), 0)
 				return
 			}
 			batch = append(batch, e)
-			if len(batch) >= 100 { // batch size
-				flush()
-			}
+			checkAndFlush(len(batch), 100) // flush if batch size exceeds 1000
 		case <-ticker.C:
-			if len(batch) > 0 {
-				flush()
-			}
+			checkAndFlush(len(batch), 0)
 		case <-w.closeCh:
-			if len(batch) > 0 {
-				flush()
-			}
+			checkAndFlush(len(batch), 0)
 			return
 		}
 	}
