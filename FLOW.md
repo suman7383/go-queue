@@ -46,9 +46,9 @@ flowchart TD
     Recover --> TopicEnq
   end
 
-  style WAL fill:#ffccff,stroke:#333,stroke-width:1px
-  style Ring fill:#fffbcc,stroke:#333
-  style InFlight fill:#ccf,stroke:#333
+  style WAL fill:#ffccff,stroke:#9933cc,stroke-width:1.5px,color:#000000
+  style Ring fill:#fff8a0,stroke:#b8a000,stroke-width:1.5px,color:#000000
+  style InFlight fill:#b3c6ff,stroke:#1a4db3,stroke-width:1.5px,color:#000000
 ```
 
 High-level flow (summary)
